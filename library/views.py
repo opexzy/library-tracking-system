@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, generics
 from rest_framework.response import Response
 from .models import Author, Book, Member, Loan
 from .serializers import AuthorSerializer, BookSerializer, MemberSerializer, LoanSerializer
@@ -11,8 +11,10 @@ class AuthorViewSet(viewsets.ModelViewSet):
     serializer_class = AuthorSerializer
 
 class BookViewSet(viewsets.ModelViewSet):
-    queryset = Book.objects.all()
     serializer_class = BookSerializer
+
+    def get_queryset(self):
+        return Book.objects.all().select_related('member', 'book')
 
     @action(detail=True, methods=['post'])
     def loan(self, request, pk=None):
@@ -52,3 +54,14 @@ class MemberViewSet(viewsets.ModelViewSet):
 class LoanViewSet(viewsets.ModelViewSet):
     queryset = Loan.objects.all()
     serializer_class = LoanSerializer
+
+    @action(detail=True, methods=['post'], url_path="(?P<loan_id>\\d+)/extend_due_date")
+    def extend_due_date(self, request, loan_id):
+        loan = generics.get_object_or_404(self.queryset(), id=loan_id)
+        # extend the due_date
+        try:
+            loan.due_date = loan.due_date + timezone.timedelta(days=request.data.get('additional_days'))
+            loan.save()
+        except Exception:
+            return Response({'error': 'Invalid data submitted'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': 'Due date extended successfully.'}, status=status.HTTP_200_OK)
